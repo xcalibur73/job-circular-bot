@@ -1,0 +1,70 @@
+"""
+Posts a job/circular notice to your Facebook Page via the Graph API.
+
+Setup you need to do once (see the build guide for full steps):
+  1. Create an app at developers.facebook.com (type: Business).
+  2. Add the "Facebook Login for Business" or generate a token via Graph API
+     Explorer while logged in as a Page admin.
+  3. Request pages_manage_posts, pages_read_engagement, pages_show_list
+     (Standard Access is enough as long as your app and Page are in the same
+     Business Manager and you are the one posting -- App Review is only
+     required once you want other people's pages/users to use this app).
+  4. Exchange your short-lived user token for a long-lived one, then fetch
+     your Page Access Token from /me/accounts. Long-lived Page tokens do not
+     expire unless the password changes, the app is removed, or you lose
+     admin rights on the Page.
+  5. Put PAGE_ID and PAGE_ACCESS_TOKEN in environment variables / GitHub
+     Actions secrets -- never commit them to the repo.
+"""
+
+import os
+import logging
+import requests
+
+logger = logging.getLogger("facebook_poster")
+
+GRAPH_API_VERSION = "v20.0"  # check developers.facebook.com/docs/graph-api/changelog for the current version
+PAGE_ID = os.environ["FB_PAGE_ID"]
+PAGE_ACCESS_TOKEN = os.environ["FB_PAGE_ACCESS_TOKEN"]
+
+POST_TEMPLATE = """{title}
+
+{source} has posted a new opening. Full details and how to apply are in the original notice below. Always double check the deadline and requirements on the source page before applying.
+
+Apply / read the full notice here: {url}
+
+#Hiring #Jobs #BangladeshJobs #CareerNotice #{source_tag}"""
+
+
+def format_post(notice):
+    source_tag = "".join(ch for ch in notice["source"] if ch.isalnum())
+    return POST_TEMPLATE.format(
+        title=notice["title"],
+        source=notice["source"],
+        url=notice["url"],
+        source_tag=source_tag,
+    )
+
+
+def post_notice(notice):
+    """Publishes one notice to the Page feed as a link post.
+
+    Using the 'link' field (not just raw text) lets Facebook generate a
+    clickable preview card for the original notice URL, which is what
+    actually drives people to the source and protects credibility.
+    """
+    message = format_post(notice)
+    endpoint = f"https://graph.facebook.com/{GRAPH_API_VERSION}/{PAGE_ID}/feed"
+    payload = {
+        "message": message,
+        "link": notice["url"],
+        "access_token": PAGE_ACCESS_TOKEN,
+    }
+    resp = requests.post(endpoint, data=payload, timeout=15)
+    if resp.status_code != 200:
+        logger.error("Facebook post failed for %s: %s", notice["url"], resp.text)
+        resp.raise_for_status()
+
+    result = resp.json()
+    logger.info("Posted to Facebook: %s (post id: %s)", notice["title"], result.get("id"))
+    return result
