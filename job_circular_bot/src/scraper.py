@@ -27,6 +27,8 @@ from urllib.parse import urljoin
 import requests
 import feedparser
 from bs4 import BeautifulSoup
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 logger = logging.getLogger("scraper")
 
@@ -36,9 +38,30 @@ HEADERS = {
 REQUEST_TIMEOUT = 15
 DELAY_BETWEEN_SOURCES_SECONDS = 3  # be a polite, slow visitor -- not a hammering bot
 
+_session = None
+
+
+def _get_session():
+    """One shared session, with retries for the transient failures that are
+    normal when reading 40+ sites in a row (timeouts, brief 5xx responses)."""
+    global _session
+    if _session is None:
+        retry = Retry(
+            total=2,
+            backoff_factor=1,
+            status_forcelist=(500, 502, 503, 504),
+            allowed_methods=frozenset({"GET"}),
+        )
+        session = requests.Session()
+        session.headers.update(HEADERS)
+        session.mount("https://", HTTPAdapter(max_retries=retry))
+        session.mount("http://", HTTPAdapter(max_retries=retry))
+        _session = session
+    return _session
+
 
 def fetch_static_html(source):
-    resp = requests.get(source["url"], headers=HEADERS, timeout=REQUEST_TIMEOUT)
+    resp = _get_session().get(source["url"], timeout=REQUEST_TIMEOUT)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, "html.parser")
 
@@ -73,30 +96,34 @@ def fetch_js_render(source):
     notices = []
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        page = browser.new_page(user_agent=HEADERS["User-Agent"])
-        page.goto(source["url"], timeout=REQUEST_TIMEOUT * 1000)
-        page.wait_for_load_state("networkidle")
+        try:
+            page = browser.new_page(user_agent=HEADERS["User-Agent"])
+            page.goto(source["url"], timeout=REQUEST_TIMEOUT * 1000)
+            page.wait_for_load_state("networkidle")
 
-        items = page.query_selector_all(sel["list_item"])
-        for item in items:
-            title_el = item.query_selector(sel["title"])
-            link_el = item.query_selector(sel["link"])
-            date_el = item.query_selector(sel["date"]) if sel.get("date") else None
+            items = page.query_selector_all(sel["list_item"])
+            for item in items:
+                title_el = item.query_selector(sel["title"])
+                link_el = item.query_selector(sel["link"])
+                date_el = item.query_selector(sel["date"]) if sel.get("date") else None
 
-            if not title_el or not link_el:
-                continue
+                if not title_el or not link_el:
+                    continue
 
-            href = link_el.get_attribute("href") or ""
-            if source.get("link_is_relative"):
-                href = urljoin(source["url"], href)
+                href = link_el.get_attribute("href") or ""
+                if source.get("link_is_relative"):
+                    href = urljoin(source["url"], href)
 
-            notices.append({
-                "source": source["name"],
-                "title": title_el.inner_text().strip(),
-                "url": href,
-                "posted_date": date_el.inner_text().strip() if date_el else None,
-            })
-        browser.close()
+                notices.append({
+                    "source": source["name"],
+                    "title": title_el.inner_text().strip(),
+                    "url": href,
+                    "posted_date": date_el.inner_text().strip() if date_el else None,
+                })
+        finally:
+            # Always release the browser: a selector or page-load error would
+            # otherwise leak a Chromium process for every failing source.
+            browser.close()
     return notices
 
 
@@ -120,10 +147,14 @@ PARSERS = {
 }
 
 
-def fetch_all(sources):
+def fetch_all(sources, on_failure=None):
     """Fetch every source, one at a time, skipping (and logging) any that fail.
 
     One broken site should never stop the other 40 from being checked.
+
+    on_failure, if given, is called with a message for each source that could
+    not be fetched. Pass the alerting function so a site that quietly changed
+    its layout does not go unnoticed until someone reads the logs.
     """
     all_notices = []
     for source in sources:
@@ -137,5 +168,7 @@ def fetch_all(sources):
             all_notices.extend(notices)
         except Exception as e:
             logger.error("Failed to fetch %s: %s", source["name"], e)
+            if on_failure:
+                on_failure(f"Failed to fetch {source['name']} ({source['url']}): {e}")
         time.sleep(DELAY_BETWEEN_SOURCES_SECONDS)
     return all_notices

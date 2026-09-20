@@ -20,7 +20,7 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from scraper import fetch_all
-from dedup import filter_new, mark_posted
+from dedup import filter_new, mark_posted, mark_flagged
 from guardrails import filter_safe
 from facebook_poster import post_notice
 from alerting import send_alert
@@ -44,7 +44,9 @@ def run():
     sources = load_sources()
     logger.info("Checking %d source(s)...", len(sources))
 
-    all_notices = fetch_all(sources)
+    # A failed source is reported through the same channel as everything else;
+    # on a scheduled cloud run nobody reads the console log.
+    all_notices = fetch_all(sources, on_failure=send_alert)
     new_notices = filter_new(all_notices)
     logger.info("%d new notice(s) out of %d fetched", len(new_notices), len(all_notices))
 
@@ -52,11 +54,16 @@ def run():
 
     for notice, reason in flagged:
         send_alert(f"Flagged and skipped a notice from {notice.get('source')}: {reason}\n{notice.get('url')}")
+        # Record it so the same listing is not alerted on again every 30 minutes.
+        mark_flagged(notice, reason)
 
     posted_count = 0
     for notice in safe_notices:
         try:
-            post_notice(notice)
+            result = post_notice(notice)
+            if result.get("dry_run"):
+                logger.info("DRY RUN: would have posted %s", notice.get("url"))
+                continue
             mark_posted(notice)
             posted_count += 1
         except Exception as e:

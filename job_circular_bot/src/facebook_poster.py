@@ -28,8 +28,13 @@ logger = logging.getLogger("facebook_poster")
 # https://developers.facebook.com/docs/graph-api/changelog/versions/
 # Read from the environment so a future bump is a config change, not a code change.
 GRAPH_API_VERSION = os.environ.get("GRAPH_API_VERSION", "v26.0")
-PAGE_ID = os.environ["FB_PAGE_ID"]
-PAGE_ACCESS_TOKEN = os.environ["FB_PAGE_ACCESS_TOKEN"]
+PAGE_ID = os.environ.get("FB_PAGE_ID")
+PAGE_ACCESS_TOKEN = os.environ.get("FB_PAGE_ACCESS_TOKEN")
+
+# When DRY_RUN is set, notices are formatted and logged but never sent to
+# Facebook. This lets the whole flow be exercised without Page credentials,
+# and lets a fork be tested without posting to someone else's Page.
+DRY_RUN = os.environ.get("DRY_RUN", "").strip().lower() in {"1", "true", "yes"}
 
 POST_TEMPLATE = """{title}
 
@@ -58,6 +63,23 @@ def post_notice(notice):
     actually drives people to the source and protects credibility.
     """
     message = format_post(notice)
+
+    if DRY_RUN:
+        logger.info("DRY RUN: not posting to Facebook. Would have posted: %s", notice.get("url"))
+        return {"id": "dry-run", "dry_run": True}
+
+    missing = [name for name, value in (
+        ("FB_PAGE_ID", PAGE_ID),
+        ("FB_PAGE_ACCESS_TOKEN", PAGE_ACCESS_TOKEN),
+    ) if not value]
+    if missing:
+        raise RuntimeError(
+            "Cannot post to Facebook: missing environment variable(s): "
+            + ", ".join(missing)
+            + ". Set them in your shell or as GitHub Actions secrets (see README.md), "
+            + "or set DRY_RUN=1 to test without posting."
+        )
+
     endpoint = f"https://graph.facebook.com/{GRAPH_API_VERSION}/{PAGE_ID}/feed"
     payload = {
         "message": message,
