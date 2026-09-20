@@ -99,15 +99,20 @@ Only after this passes should you add the rest of your source list.
 
 ## Step 6: Turn on the schedule
 
-The included `.github/workflows/run.yml` runs the bot every 30 minutes on GitHub Actions, for free, with no server for you to maintain. It also commits the "already posted" database back to the repo after each run, since GitHub Actions doesn't keep files between runs otherwise.
+The workflow at the repository root, `.github/workflows/run.yml`, runs the bot every 30 minutes on GitHub Actions, for free, with no server for you to maintain. GitHub Actions runners start empty every time, so the "already posted" database is persisted with `actions/cache` (restored at the start of a run, saved at the end) rather than committed back into the repository - that keeps the history clean and stops two overlapping runs from fighting over a binary file.
 
-Push the project to a GitHub repo, add the four secrets mentioned in Step 3, and the schedule starts automatically. You can also trigger a run manually from the repo's Actions tab while testing.
+Push the project to a GitHub repo, add the four secrets mentioned in Step 3, and the schedule starts. Two GitHub details are worth knowing up front: a fork does not run workflows at all until you enable them in that repository's Actions tab, and a scheduled workflow is switched off automatically after 60 days without any repository activity, so re-enable it if the project goes quiet for a couple of months. You can also trigger a run manually from the Actions tab while testing, and manual runs default to a dry run (fetch and validate, but do not post).
 
 30 minutes is a reasonable starting interval: frequent enough to feel "instant" relative to how often companies actually post circulars, not so frequent that you're hammering 30+ sites every few minutes. You can tighten it later once you've confirmed everything behaves.
 
 ## Step 7: Watch it for the first two weeks
 
 Even with guardrails and alerts, the first two weeks are where you'll learn which sites redesign often, which selectors are fragile, and whether the post format actually reads well on the Page. Check the Page daily at first. After that, the Telegram alerts should be enough to tell you when something needs attention.
+
+## The one thing that expires
+
+Meta retires each Graph API version about two years after it is released, and once a version expires every request to it fails - the bot would stop posting with nothing visible on the Page itself. The workflow passes `GRAPH_API_VERSION` as an environment variable and the code reads it, so the fix is to change that single value in `.github/workflows/run.yml` to the current version. The current version and every expiry date are listed at https://developers.facebook.com/docs/graph-api/changelog/versions/. A calendar reminder every three or four months is enough.
+
 
 ## Recommendation
 
@@ -130,7 +135,8 @@ Even with guardrails and alerts, the first two weeks are where you'll learn whic
 - `src/alerting.py`: pings you on Telegram when something needs attention
 - `src/facebook_poster.py`: posts to your Page via the Graph API
 - `src/main.py`: runs the whole flow, meant to be scheduled
-- `.github/workflows/run.yml`: the free scheduled runner
+- `.github/workflows/run.yml`: the free scheduled runner (it has to sit at the repository root, next to this folder, not inside it)
 - `README.md`: quick setup checklist
+- `tests/`: tests for dedup, the guardrails and the posting path, plus one end-to-end run against a fixture page
 
 This is a working skeleton, not a finished bot. The remaining work is filling in real selectors for your actual source list and doing the one-time Facebook app setup.
