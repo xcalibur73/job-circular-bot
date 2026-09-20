@@ -11,3 +11,11 @@ venv/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+
+# Local agent and tooling directories, which must never be published
+.agents/
+federation/
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+skills-lock.json
