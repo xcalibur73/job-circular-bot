@@ -1,0 +1,5 @@
+# Only needed for sources with parser: "js_render" (JavaScript-heavy career
+# pages). Install with:
+#   pip install -r requirements-browser.txt
+#   python -m playwright install --with-deps chromium
+playwright==1.63.0

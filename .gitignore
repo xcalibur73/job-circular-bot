@@ -1,0 +1,13 @@
+# Bot state: the "already posted" database and run logs. Kept out of the repo
+# and persisted between scheduled runs with actions/cache instead.
+job_circular_bot/data/
+
+# Local secrets and virtual environments
+.env
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
