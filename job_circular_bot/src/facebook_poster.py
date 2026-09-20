@@ -23,7 +23,11 @@ import requests
 
 logger = logging.getLogger("facebook_poster")
 
-GRAPH_API_VERSION = "v20.0"  # check developers.facebook.com/docs/graph-api/changelog for the current version
+# Meta retires each Graph API version ~2 years after release. v20.0 was released
+# 2024-05-21 and expires 2026-09-24, after which every call to it fails:
+# https://developers.facebook.com/docs/graph-api/changelog/versions/
+# Read from the environment so a future bump is a config change, not a code change.
+GRAPH_API_VERSION = os.environ.get("GRAPH_API_VERSION", "v26.0")
 PAGE_ID = os.environ["FB_PAGE_ID"]
 PAGE_ACCESS_TOKEN = os.environ["FB_PAGE_ACCESS_TOKEN"]
 
