@@ -73,3 +73,29 @@ def test_marking_the_same_flagged_notice_twice_is_safe():
         conn.close()
 
     assert count == 1
+
+
+def test_should_poll_is_true_for_unknown_sources_and_zero_intervals():
+    assert dedup.should_poll("https://new.example", 60) is True
+    assert dedup.should_poll("https://new.example", 0) is True
+
+
+def test_should_poll_honours_the_interval_after_a_fetch():
+    dedup.mark_polled("https://api.example")
+
+    assert dedup.should_poll("https://api.example", 60) is False
+    assert dedup.should_poll("https://api.example", 0) is True
+
+
+def test_should_poll_is_true_again_once_the_interval_has_passed():
+    conn = dedup._connect()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO source_state (url, last_polled) VALUES (?, ?)",
+            ("https://old.example", "2020-01-01 00:00:00"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    assert dedup.should_poll("https://old.example", 60) is True

@@ -64,7 +64,7 @@ def post_notice(notice):
     """
     message = format_post(notice)
 
-    if DRY_RUN:
+    if DRY_RUN or os.environ.get("DRY_RUN", "").strip().lower() in {"1", "true", "yes"}:
         logger.info("DRY RUN: not posting to Facebook. Would have posted: %s", notice.get("url"))
         return {"id": "dry-run", "dry_run": True}
 

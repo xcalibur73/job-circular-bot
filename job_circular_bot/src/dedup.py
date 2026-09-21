@@ -14,6 +14,7 @@ the same broken listing would be re-alerted on every single run.
 
 import sqlite3
 import hashlib
+from datetime import datetime, timezone
 from pathlib import Path
 
 DB_PATH = Path(__file__).resolve().parent.parent / "data" / "posted.db"
@@ -39,6 +40,18 @@ def _connect():
             url TEXT,
             reason TEXT,
             flagged_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS source_state (
+            url TEXT PRIMARY KEY,
+            last_polled TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS alerted_sources (
+            url TEXT PRIMARY KEY,
+            last_alerted TEXT DEFAULT CURRENT_TIMESTAMP
         )
     """)
     return conn
@@ -94,6 +107,88 @@ def mark_flagged(notice, reason):
             notice.get("url"),
             reason,
         ),
+    )
+    conn.commit()
+    conn.close()
+
+
+def should_poll(url, min_interval_minutes, now=None):
+    """True when enough time has passed since this source was last fetched.
+
+    Public job APIs publish fair-use limits (Remotive asks for about 4 pulls a
+    day, Jobicy for at most one per hour). min_interval_minutes=0 always
+    returns True.
+    """
+    if not min_interval_minutes or min_interval_minutes <= 0:
+        return True
+
+    conn = _connect()
+    try:
+        row = conn.execute(
+            "SELECT last_polled FROM source_state WHERE url = ?", (url,)
+        ).fetchone()
+    finally:
+        conn.close()
+
+    if not row:
+        return True
+
+    try:
+        last = datetime.fromisoformat(row[0])
+    except (TypeError, ValueError):
+        return True
+
+    now = now or datetime.now(timezone.utc).replace(tzinfo=None)
+    return (now - last).total_seconds() >= min_interval_minutes * 60
+
+
+def mark_polled(url):
+    """Records that a source was fetched right now (UTC, like CURRENT_TIMESTAMP)."""
+    conn = _connect()
+    conn.execute(
+        "INSERT OR REPLACE INTO source_state (url, last_polled) VALUES (?, ?)",
+        (url, datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")),
+    )
+    conn.commit()
+    conn.close()
+
+
+def should_alert_source(url, min_hours=24, now=None):
+    """True when a broken source should trigger a Telegram alert again.
+
+    A source that stays broken would otherwise alert on every run, every 30
+    minutes, forever. Reminding once a day is enough to get it fixed without
+    training the user to ignore the bell.
+    """
+    if not min_hours or min_hours <= 0:
+        return True
+
+    conn = _connect()
+    try:
+        row = conn.execute(
+            "SELECT last_alerted FROM alerted_sources WHERE url = ?", (url,)
+        ).fetchone()
+    finally:
+        conn.close()
+
+    if not row:
+        return True
+
+    try:
+        last = datetime.fromisoformat(row[0])
+    except (TypeError, ValueError):
+        return True
+
+    now = now or datetime.now(timezone.utc).replace(tzinfo=None)
+    return (now - last).total_seconds() >= min_hours * 3600
+
+
+def mark_source_alerted(url):
+    """Records that a source failure was just alerted on."""
+    conn = _connect()
+    conn.execute(
+        "INSERT OR REPLACE INTO alerted_sources (url, last_alerted) VALUES (?, ?)",
+        (url, datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")),
     )
     conn.commit()
     conn.close()

@@ -1,0 +1,29 @@
+# company_site_list.txt -- the sites this bot watches. One URL per line.
+#
+# HOW TO ADD A SITE: paste the URL of the page that actually lists the jobs,
+# on its own line. The bot detects how to read each one automatically:
+#
+#   a URL ending in .xml / .rss, or containing /rss or /feed   -> RSS feed
+#   remotive.com/api, remoteok.com/api, jobicy.com/api         -> their public API
+#   anything else                                              -> the page is read and
+#                                                                 job-looking links are
+#                                                                 picked out
+#
+# OPTIONS you can put at the end of a line:
+#   |js              the site only shows jobs after JavaScript runs (uses a browser)
+#   |name=Acme Ltd   how the site is named on the Facebook Page
+#
+# Four reputable remote-job feeds are set up below and were verified working.
+# Add your Bangladeshi employers the same way -- paste the careers page URL.
+# Check each site's terms before adding it, and skip any site that forbids
+# automated reading (see the build guide).
+#
+# Examples of the kind of line to add for a Bangladeshi employer:
+#   https://careers.brac.net/
+#   https://www.robi.com.bd/en/careers
+#   https://www.grameenphone.com/<their careers page URL>
+#
+https://remotive.com/api/remote-jobs
+https://remoteok.com/api
+https://jobicy.com/api/v2/remote-jobs?count=50
+https://weworkremotely.com/categories/remote-programming-jobs.rss

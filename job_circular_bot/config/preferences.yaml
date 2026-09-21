@@ -1,0 +1,17 @@
+# Optional defaults for the bot. Everything here can be overridden from the
+# command line (--keyword). Leave keywords empty to post every notice the
+# sources return.
+
+keywords: []
+#  - python
+#  - django
+#  - customer support
+
+# Any of these in a notice drops it, whatever the keywords say.
+exclude: []
+#  - data entry
+#  - commission only
+
+# Feed listings older than this many days are dropped, even when they carry no
+# deadline of their own. Set to null to disable the age check.
+max_age_days: 60

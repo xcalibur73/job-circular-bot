@@ -4,23 +4,14 @@
 <body>
   <h1>Openings</h1>
 
-  <div class="job">
-    <h3>Backend Engineer</h3>
-    <a href="/jobs/1">Read the full notice</a>
-    <span class="date">2026-09-19</span>
-  </div>
+  <!-- The generic detector looks for links whose target URL mentions jobs,
+       careers, etc., and whose text reads like a job title. -->
+  <a href="/jobs/1">Backend Engineer at Example Ltd</a>
+  <a href="/jobs/2">Data Analyst position open</a>
 
-  <div class="job">
-    <h3>Data Analyst</h3>
-    <a href="/jobs/2">Read the full notice</a>
-    <span class="date">2026-09-20</span>
-  </div>
-
-  <!-- A layout change would look like this: a listing with no usable title.
-       The guardrails are supposed to flag it instead of posting it. -->
-  <div class="job">
-    <h3></h3>
-    <a href="/jobs/3">Read the full notice</a>
-  </div>
+  <!-- Navigation links must be ignored. -->
+  <a href="/careers/apply">Read the full notice</a>
+  <a href="/about">About us</a>
 </body>
 </html>
+

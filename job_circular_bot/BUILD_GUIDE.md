@@ -15,7 +15,7 @@ Two honest flags, as your product advisor rather than just your builder.
 ## How the system fits together
 
 ```
-[sources.yaml: list of company sites]
+[company_site_list.txt: the sites you pasted, one URL per line]
             |
             v
    [scraper.py fetches each site]
@@ -39,22 +39,30 @@ The whole thing runs from `main.py`, on a schedule, with no server to maintain i
 
 ## Step 1: Build your source list, starting small
 
-Even though the target is 10 to 50+ sources, do not add them all on day one. Start with 3 to 5 real company career pages you care about. For each one, open the page, right-click on a job listing, choose Inspect, and note:
+Even though the target is 10 to 50+ sources, do not add them all on day one. Start with 3 to 5 real career pages you care about, and paste each one into `company_site_list.txt` (repository root), one URL per line. The starter file ships with four reputable remote-job feeds already verified working; add your Bangladeshi employers the same way: paste the URL of the page that actually lists the openings.
 
-- What HTML element wraps one job listing (a `div`, `li`, or similar, repeated for each job)
-- What element holds the job title
-- What element holds the link to the full notice
-- Whether that link is a full URL or a relative path like `/jobs/123`
+You do not write selectors anymore. Each URL is detected automatically:
 
-Put these into `config/sources.yaml` (the starter file has two worked examples plus an RSS example). This config-driven approach is exactly why the plan to reach 50+ sources will not turn into a mess of duplicated code: adding company #41 means adding a new block to `sources.yaml`, not writing new code.
+- a URL ending in `.rss` / `.xml` / `.atom`, or containing `/rss` or `/feed` is read as a feed;
+- `remotive.com/api`, `remoteok.com/api` and `jobicy.com/api` are public job APIs, the most reliable option of all;
+- everything else is read as a normal page, and the links that look like job postings are picked out for you.
 
-A few sites will already publish an RSS or Atom feed of jobs (check for a `/feed` or `/rss` URL, or search "[company name] careers rss"). Always prefer that over scraping HTML: it's more stable, lighter on their server, and less likely to break when they redesign their site.
+Two things to know:
+
+- Check each site's terms before adding it, and skip any site that forbids automated reading. Prefer feeds and public APIs over scraping wherever one exists.
+- Remotive, RemoteOK and Jobicy ask to be credited as the source with a link back. The post template already does exactly that, so leave it in place.
 
 ## Step 2: Decide static vs. JS-rendered per site
 
-Some career pages are plain HTML (the job listings are in the page source you can view with "View Page Source"). Others load listings with JavaScript after the page opens (common with Workday, Greenhouse, and many modern company sites), which means a simple HTTP request won't see the job list at all.
+Most career pages are plain HTML and just work. Some load listings with JavaScript after the page opens (common with Workday, Greenhouse, and many modern company sites), which a plain HTTP request cannot see.
 
-Quick test: open the page, view source (Ctrl+U or Cmd+Option+U), and search for one of the job titles you can see on the page. If it's there, mark that source `static_html` in the config (fast, uses `requests` and `BeautifulSoup`). If it's not there, mark it `js_render` (uses Playwright, a real headless browser, slower but works on JS-heavy sites).
+Quick test: run the bot once on the site. If it reports `Found 0 notices`, view the page source (Ctrl+U) and search for one of the job titles you can see on the page. If the title is missing from the source, the site is JS-rendered: add ` |js` to the end of its line in `company_site_list.txt`, and the bot will read it through a real browser instead. You can also force a display name with ` |name=Acme Ltd`.
+
+## Step 2b: Choose your keywords
+
+Run the bot with `--keyword "python, customer support"` (the `run_job_search.bat` file asks you for this), or set standing keywords under `keywords:` in `config/preferences.yaml`. A notice is kept when any term appears in its title, company, tags or category; terms are phrases, separated by commas. `exclude:` drops notices containing any of those terms.
+
+Before anything is posted, the bot also checks that the application window is still open: a notice whose text states a deadline that has already passed is skipped, notices with no stated deadline are kept, and feed listings older than `max_age_days` are dropped as stale.
 
 ## Step 3: Set up the Facebook side
 
@@ -89,13 +97,19 @@ Adjust the wording to match the voice you want the Page to have. If this Page is
 
 ## Step 5: Test end to end on one real source
 
-Before turning on the schedule, run `python src/main.py` locally against a `sources.yaml` with just one real source in it. Confirm:
+Before turning on the schedule, run the bot locally with just one real site in `company_site_list.txt`. The easy way on Windows is `run_job_search.bat`; on the command line:
 
-- A real post appears on your Page with the right title, link, and preview card
+```bash
+python src/main.py --keyword "your title" --dry-run
+```
+
+Confirm:
+
+- The dry run lists the notices it found, filtered by your keyword, with nothing posted to Facebook
 - Running it again immediately does NOT post the same notice twice (dedup working)
-- Deliberately breaking a selector (typo it) gets caught and alerted, not posted (guardrails working)
+- Deliberately breaking a URL (typo it) gets caught and alerted, not posted (alerting working)
 
-Only after this passes should you add the rest of your source list.
+Only after this passes should you add the rest of your source list, and only then drop the `--dry-run`.
 
 ## Step 6: Turn on the schedule
 
@@ -128,15 +142,19 @@ Meta retires each Graph API version about two years after it is released, and on
 
 ## What's in the code you received
 
-- `config/sources.yaml`: your list of sites and how to read each one
-- `src/scraper.py`: fetches listings (static HTML, JS-rendered, or RSS)
-- `src/dedup.py`: remembers what's already been posted
+- `company_site_list.txt`: the sites you watch, one URL per line (you edit this)
+- `run_job_search.bat`: double-click launcher; asks for your keyword and dry run or real post
+- `config/preferences.yaml`: optional standing keywords, excludes and maximum listing age
+- `src/keywords.py`: matches notices against your job titles
+- `src/deadline.py`: skips notices whose application deadline has passed, and stale listings
+- `src/scraper.py`: fetches listings (public APIs, feeds, plain pages, or a browser for JS sites)
+- `src/dedup.py`: remembers what's posted, flagged, and when each source was last polled
 - `src/guardrails.py`: catches obviously broken scrapes before they post
 - `src/alerting.py`: pings you on Telegram when something needs attention
 - `src/facebook_poster.py`: posts to your Page via the Graph API
-- `src/main.py`: runs the whole flow, meant to be scheduled
+- `src/main.py`: runs the whole flow, on a schedule or by hand
 - `.github/workflows/run.yml`: the free scheduled runner (it has to sit at the repository root, next to this folder, not inside it)
 - `README.md`: quick setup checklist
 - `tests/`: tests for dedup, the guardrails and the posting path, plus one end-to-end run against a fixture page
 
-This is a working skeleton, not a finished bot. The remaining work is filling in real selectors for your actual source list and doing the one-time Facebook app setup.
+This is a working skeleton, not a finished bot. The remaining work is choosing your keywords, adding your sites to company_site_list.txt, and doing the one-time Facebook app setup.
